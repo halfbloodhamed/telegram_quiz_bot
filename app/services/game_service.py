@@ -71,6 +71,9 @@ class GameService:
         # Join room
         player = await self.player_repo.create(room.id, user_id)
         await self.session.commit()
+
+        # Refresh room from the database so the caller sees the latest player list
+        room = await self.room_repo.get_by_code(room_code.upper())
         
         logger.info(f"User {user_id} joined room {room_code}")
         return room, player, "success"

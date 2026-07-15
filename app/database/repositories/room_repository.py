@@ -13,6 +13,7 @@ class RoomRepository:
     
     async def get_by_code(self, code: str) -> Optional[Room]:
         """Get room by code with players loaded"""
+        self.session.expire_all() if hasattr(self.session, "expire_all") else None
         result = await self.session.execute(
             select(Room)
             .options(selectinload(Room.players).selectinload(Player.user))
@@ -22,6 +23,7 @@ class RoomRepository:
     
     async def get_by_id(self, room_id: int) -> Optional[Room]:
         """Get room by ID with players loaded"""
+        self.session.expire_all() if hasattr(self.session, "expire_all") else None
         result = await self.session.execute(
             select(Room)
             .options(selectinload(Room.players).selectinload(Player.user))

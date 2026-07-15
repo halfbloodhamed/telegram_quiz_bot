@@ -18,5 +18,5 @@ COPY . .
 # Create directory for SQLite database (for local dev)
 RUN mkdir -p /app/data
 
-# Run migrations and start the bot
-CMD alembic upgrade head && python -m app.main
+# Run migrations if available, then start the bot
+CMD sh -c 'if [ -d /app/alembic/versions ]; then alembic upgrade head; fi; python -m app.main'

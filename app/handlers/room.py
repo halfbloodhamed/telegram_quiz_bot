@@ -83,14 +83,18 @@ async def process_room_code(message: Message, state: FSMContext, session: AsyncS
         return
     
     await state.clear()
-    
+
+    # Reload the room and player list from the database so the join flow uses fresh state
+    room = await game_service.room_repo.get_by_id(room.id)
+    players = await game_service.player_repo.get_by_room(room.id)
+
     # Check if room is full and can start
-    if len(room.players) >= room.max_players:
+    if len(players) >= room.max_players:
         # Notify both players
-        for p in room.players:
+        for player in players:
             try:
                 await bot.send_message(
-                    p.user.telegram_id,
+                    player.user.telegram_id,
                     f"✅ Opponent joined! Game starting soon..."
                 )
             except Exception as e:

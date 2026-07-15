@@ -12,12 +12,19 @@ class DatabaseManager:
     """Database connection manager"""
     
     def __init__(self):
+        engine_kwargs = {
+            "echo": not settings.is_production,
+        }
+        if settings.DATABASE_URL.startswith("postgresql"):
+            engine_kwargs.update({
+                "pool_pre_ping": True,
+                "pool_size": 20,
+                "max_overflow": 10,
+            })
+
         self.engine: AsyncEngine = create_async_engine(
             settings.DATABASE_URL,
-            echo=not settings.is_production,
-            pool_pre_ping=True,
-            pool_size=20,
-            max_overflow=10,
+            **engine_kwargs,
         )
         
         self.async_session = async_sessionmaker(

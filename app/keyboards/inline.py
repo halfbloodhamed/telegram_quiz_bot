@@ -13,24 +13,24 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def get_question_keyboard(question: Question, question_num: int) -> InlineKeyboardMarkup:
+def get_question_keyboard(question: Question, room_code: str, question_num: int) -> InlineKeyboardMarkup:
     """Get question answer keyboard"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=f"A) {question.option_a}",
-            callback_data=f"answer:{question_num}:A"
+            callback_data=f"answer:{room_code}:{question_num}:A"
         )],
         [InlineKeyboardButton(
             text=f"B) {question.option_b}",
-            callback_data=f"answer:{question_num}:B"
+            callback_data=f"answer:{room_code}:{question_num}:B"
         )],
         [InlineKeyboardButton(
             text=f"C) {question.option_c}",
-            callback_data=f"answer:{question_num}:C"
+            callback_data=f"answer:{room_code}:{question_num}:C"
         )],
         [InlineKeyboardButton(
             text=f"D) {question.option_d}",
-            callback_data=f"answer:{question_num}:D"
+            callback_data=f"answer:{room_code}:{question_num}:D"
         )],
     ])
 

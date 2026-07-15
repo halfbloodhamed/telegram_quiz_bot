@@ -4,8 +4,10 @@ from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import RoomState
+from app.database.repositories.room_repository import RoomRepository
 from app.database.repositories.user_repository import UserRepository
 from app.database.repositories.player_repository import PlayerRepository
+from app.database.repositories.question_repository import QuestionRepository
 from app.services.game_service import GameService
 from app.services.redis_service import redis_service
 from app.keyboards.inline import get_question_keyboard, get_back_to_menu_keyboard
@@ -31,11 +33,13 @@ async def send_question_to_players(
         f"⏱️ Time: {settings.QUESTION_TIME_LIMIT} seconds"
     )
     
-    keyboard = get_question_keyboard(question, question_num)
+    keyboard = get_question_keyboard(question, room.code, question_num)
     
     # Set timer in Redis
-    expire_at = time.time() + settings.QUESTION_TIME_LIMIT
+    started_at = time.time()
+    expire_at = started_at + settings.QUESTION_TIME_LIMIT
     await redis_service.set_timer(room.code, question_num, expire_at)
+    await redis_service.set_question_state(room.code, question_num, started_at, expire_at)
     
     for player in players:
         try:
@@ -68,25 +72,86 @@ async def wait_for_answers(room_code: str, question_num: int, player_ids: list):
     return False
 
 
+def parse_answer_callback_data(callback_data: str):
+    """Parse answer callback data into room code, question number, and selected answer."""
+    parts = callback_data.split(":")
+    if len(parts) != 4 or parts[0] != "answer":
+        raise ValueError("Invalid answer format")
+
+    _, room_code, question_str, selected = parts
+    return room_code, int(question_str), selected
+
+
 @router.callback_query(F.data.startswith("answer:"))
 async def handle_answer(callback: CallbackQuery, session: AsyncSession, bot: Bot):
     """Handle player answer"""
     try:
-        _, question_str, selected = callback.data.split(":")
-        question_num = int(question_str)
+        room_code, question_num, selected = parse_answer_callback_data(callback.data)
     except (ValueError, IndexError):
         await callback.answer("Invalid answer format", show_alert=True)
         return
-    
+
     user_repo = UserRepository(session)
     user = await user_repo.get_by_telegram_id(callback.from_user.id)
-    
+
     if not user:
         await callback.answer("User not found", show_alert=True)
         return
-    
-    # Find player's room
-    # This is a simplified version - in production, track active games in Redis
+
+    room_repo = RoomRepository(session)
+    room = await room_repo.get_by_code(room_code)
+    if not room:
+        await callback.answer("Room not found", show_alert=True)
+        return
+
+    player_repo = PlayerRepository(session)
+    player = await player_repo.get_by_room_and_user(room.id, user.id)
+    if not player:
+        await callback.answer("You are not a participant in this room", show_alert=True)
+        return
+
+    if await redis_service.has_answer_submitted(room_code, question_num, player.user_id):
+        await callback.answer("Answer already recorded", show_alert=True)
+        return
+
+    question_ids = await redis_service.get_room_questions(room_code)
+    if not question_ids or question_num - 1 >= len(question_ids):
+        await callback.answer("Question not found", show_alert=True)
+        return
+
+    question_repo = QuestionRepository(session)
+    question = await question_repo.get_by_id(question_ids[question_num - 1])
+    if not question:
+        await callback.answer("Question not found", show_alert=True)
+        return
+
+    question_state = await redis_service.get_question_state(room_code, question_num)
+    response_time = None
+    if question_state:
+        started_at = question_state.get("started_at")
+        if started_at is not None:
+            response_time = round(time.time() - started_at, 2)
+
+    game_service = GameService(session)
+    await game_service.submit_answer(
+        room=room,
+        player=player,
+        question=question,
+        selected_answer=selected,
+        response_time=response_time,
+    )
+
+    await redis_service.set_answer_submitted(room_code, question_num, player.user_id)
+    await redis_service.set_answer_data(
+        room_code,
+        question_num,
+        player.user_id,
+        {
+            "selected_answer": selected,
+            "response_time": response_time,
+        },
+    )
+
     await callback.answer("✅ Answer submitted!")
     await callback.message.edit_reply_markup(reply_markup=None)
 
